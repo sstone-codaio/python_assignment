@@ -1,0 +1,22 @@
+version: '3.7'
+
+services:
+
+  db:
+    image: postgres:13.2-alpine
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    environment:
+      - POSTGRES_DB=financial_data
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+
+  api:
+    build: .
+    ports:
+      - 5000:80
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db/financial_data
+
