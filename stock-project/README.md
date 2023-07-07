@@ -93,6 +93,12 @@ Large output omitted
 {"data":[{"symbol":"IBM","date":"2023-07-03","open_price":133.42,"close_price":133.67,"volume":1477149}],"pagination":{"count":13,"page":3,"limit":1,"pages":13},"info":{"error":""}}
 ```
 
+`curl -X GET 'http://localhost:5000/api/financial_data?symbol=IBM&limit=1&page=15'`
+```
+{"data":[],"pagination":{"count":13,"page":15,"limit":1,"pages":13},"info":{"error":""}}
+```
+
+
 ### Get statistics with valid dates and symbol
 `curl -X GET 'http://localhost:5000/api/statistics?start_date=2023-07-01&end_date=2023-07-06&symbol=IBM'`
 ```
@@ -101,10 +107,22 @@ Large output omitted
 
 
 ## Testing (error handling)
+
 ### Invalid date string
 `curl -X GET 'http://localhost:5000/api/financial_data?start_date=2023-0-10&limit=3&page=2'`
 ```
 {"data":[],"pagination":null,"info":{"error":"Input start or end date is invalid"}}
+```
+
+### Invalid page / limit
+`curl -X GET 'http://localhost:5000/api/financial_data?symbol=IBM&limit=0&page=1'`
+```
+{"data":[],"pagination":null,"info":{"error":"Input limit is invalid"}}
+```
+
+`curl -X GET 'http://localhost:5000/api/financial_data?symbol=IBM&limit=1&page=-1'`
+```
+{"data":[],"pagination":null,"info":{"error":"Input page is invalid"}}
 ```
 
 ### Non existing symbol
