@@ -44,6 +44,11 @@ ALPHAVANTAGE_API_KEY = <your api key>
 
 These variables get passed to Docker in `docker-compose.yml`. You can change the postgres username and password but remember to configure them accordingly when spawning up the database, in `docker-compose.yml`.
 
+In production there are two options to set environment variables.
+- You can manually set them through your cloud provider's dashboards or CLI tools.
+- You can store `env_file` in s3 and pass `env_file` configuration in your `docker-compose.yml` or the --env-file flag with `docker run`.
+- (Recommended) You can use AWS Secrets Manager, Google Cloud Secret Manager for better security over sensitive data.
+
 ## Testing (good cases)
 
 ### Valid start and end dates for IBM with no pagination.
@@ -164,3 +169,30 @@ Large output omitted
 ## Backfill
 It is possible to backfill older data by setting today to a particular date in the past. For example, setting
 `today = datetime.date(2023, 2, 14)` will backfill two weeks of data ending Feb 14.
+
+## DB clean up
+Be sure to always back up your data before performing these operations, especially in a production environment.
+
+You have several options to clean up / truncate data.
+
+### Delete rows
+You can use the DELETE statement to remove specific rows from a table.
+```sql
+DELETE FROM financial_data WHERE date >= '2023-07-04';
+```
+
+### Truncate Table
+If you want to delete all rows from a table without removing the table itself, you can use the TRUNCATE statement.
+
+```sql
+TRUNCATE TABLE financial_data;
+```
+### Drop Table
+```sql
+DROP TABLE financial_data;
+```
+
+In a local environment, you can run these commands directly through a PostgreSQL client like `psql` or PgAdmin. In a production environment, e.g. a PostgreSQL database running on AWS RDS, first create a RDS snapshot for **backup**, then connect to the production database and run your cleanup query. Carefully monitor your database after the cleanup.
+
+## Schema changes and migrations
+Not supported at the time.
