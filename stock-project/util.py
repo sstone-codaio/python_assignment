@@ -1,5 +1,6 @@
 from dateutil.parser import parse
 
+
 def is_date(date_str, fuzzy=False):
     """
     Return whether the string can be interpreted as a date.
@@ -9,13 +10,13 @@ def is_date(date_str, fuzzy=False):
     """
     if date_str is None:
         return False
-    try: 
+    try:
         parse(date_str, fuzzy=fuzzy)
         return True
 
     except ValueError:
         return False
 
+
 def is_date_after(start_date, end_date):
     return parse(end_date) >= parse(start_date)
-

@@ -12,6 +12,8 @@ database_name = DATABASE['name']
 date_format = 'YYYY-MM-DD'
 
 # Model defnitions
+
+
 class FinancialData(BaseModel):
     symbol: str
     date: str
@@ -19,19 +21,23 @@ class FinancialData(BaseModel):
     close_price: float
     volume: int
 
+
 class Pagination(BaseModel):
     count: int
     page: int
     limit: int
     pages: int
 
+
 class Info(BaseModel):
     error: str
+
 
 class FinancialDataResponse(BaseModel):
     data: Optional[List[FinancialData]] = []
     pagination: Pagination = None
     info: Info = None
+
 
 class StatisticsData(BaseModel):
     start_date: str
@@ -40,6 +46,7 @@ class StatisticsData(BaseModel):
     average_daily_open_price: float
     average_daily_close_price: float
     average_daily_volume: int
+
 
 class StatisticsResponse(BaseModel):
     data: Optional[StatisticsData] = None
@@ -54,7 +61,7 @@ async def read_financial_data(
         symbol: Optional[str] = None, limit: int = 5, page: int = 1):
     """
     This asynchronous endpoint retrieves financial data records from the database.
-    
+
     Parameters:
     start_date (str, optional): The starting date of the data retrieval in the format 'YYYY-MM-DD'. Defaults to None.
     end_date (str, optional): The ending date of the data retrieval in the format 'YYYY-MM-DD'. Defaults to None.
@@ -98,12 +105,10 @@ async def read_financial_data(
                         "pagination": None,
                         "info": {"error": "Input end date is invalid"}
                     }
-                if start_date and end_date and not util.is_date_after(start_date, end_date):
-                    return {
-                        "data": [],
-                        "pagination": None,
-                        "info": {"error": "Input end date is before start date"}
-                    }
+                if start_date and end_date and not util.is_date_after(
+                        start_date, end_date):
+                    return {"data": [], "pagination": None, "info": {
+                        "error": "Input end date is before start date"}}
 
                 # Query to get the total count of records
                 count_query = f"SELECT COUNT(*) FROM {database_name}"
@@ -150,6 +155,7 @@ async def read_financial_data(
     except (Exception, psycopg2.DatabaseError) as error:
         print("Error while executing PostgreSQL query", error)
 
+
 @app.get("/api/statistics", response_model=StatisticsResponse)
 async def read_statistics(
         start_date: Optional[str] = None,
@@ -157,7 +163,7 @@ async def read_statistics(
         symbol: Optional[str] = None):
     """
     This asynchronous endpoint retrieves statistics on financial data for a specific symbol over a given period of time.
-    
+
     Parameters:
     start_date (str, optional): The starting date of the data retrieval in the format 'YYYY-MM-DD'. Defaults to None.
     end_date (str, optional): The ending date of the data retrieval in the format 'YYYY-MM-DD'. Defaults to None.
@@ -166,7 +172,7 @@ async def read_statistics(
     Returns:
     A dictionary containing the calculated statistic results and any error information.
     """
-    
+
     try:
         # Connect to the database
         with psycopg2.connect(
@@ -189,9 +195,8 @@ async def read_statistics(
 
                 if not util.is_date_after(start_date, end_date):
                     return {
-                        "data": None,
-                        "info": {"error": "Input end date is before start date"}
-                    }
+                        "data": None, "info": {
+                            "error": "Input end date is before start date"}}
 
                 if not symbol:
                     return {
@@ -200,12 +205,12 @@ async def read_statistics(
                     }
 
                 query = f"""
-                    SELECT 
-                        symbol, 
+                    SELECT
+                        symbol,
                         AVG(open_price::decimal) as average_daily_open_price,
                         AVG(close_price::decimal) as average_daily_close_price,
                         AVG(volume::decimal) as average_daily_volume
-                    FROM {database_name} 
+                    FROM {database_name}
                     WHERE date BETWEEN '{start_date}' AND '{end_date}' AND symbol='{symbol}'
                     GROUP BY symbol;
                 """
@@ -213,19 +218,22 @@ async def read_statistics(
                 # Fetch the results
                 result = cur.fetchone()
                 if result is None:
-                    return {"data": None, "info": {"error": "No data found for given parameters."}}
+                    return {
+                        "data": None, "info": {
+                            "error": "No data found for given parameters."}}
 
                 return {
                     "data": {
                         "start_date": start_date,
                         "end_date": end_date,
                         "symbol": result['symbol'],
-                        "average_daily_open_price": float(result['average_daily_open_price']),
-                        "average_daily_close_price": float(result['average_daily_close_price']),
-                        "average_daily_volume": float(result['average_daily_volume'])
-                    },
-                    "info": {"error": ""}
-                }
+                        "average_daily_open_price": float(
+                            result['average_daily_open_price']),
+                        "average_daily_close_price": float(
+                            result['average_daily_close_price']),
+                        "average_daily_volume": float(
+                            result['average_daily_volume'])},
+                    "info": {
+                        "error": ""}}
     except (Exception, psycopg2.DatabaseError) as error:
         print("Error while executing PostgreSQL query", error)
-

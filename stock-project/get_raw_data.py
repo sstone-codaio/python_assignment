@@ -33,6 +33,7 @@ def get_stock_data(symbol):
 
     return stock_data
 
+
 def get_recent_two_weeks_data(stock_data, symbol):
     # Get today's date
 
@@ -50,11 +51,12 @@ def get_recent_two_weeks_data(stock_data, symbol):
 
     return two_weeks_data
 
+
 def upsert_to_db(data):
     # Connect to your postgres DB
     conn = psycopg2.connect(
-            dbname=DATABASE['name'], user=DATABASE['user'],
-            password=DATABASE['password'], host=DATABASE['host'])
+        dbname=DATABASE['name'], user=DATABASE['user'],
+        password=DATABASE['password'], host=DATABASE['host'])
     cur = conn.cursor()
 
     # Prepare the SQL statement. For dedup, use the combination of date and symbol
@@ -62,7 +64,7 @@ def upsert_to_db(data):
     # if it already exists.
 
     sql = """
-        INSERT INTO financial_data (symbol, date, open_price, close_price, volume) 
+        INSERT INTO financial_data (symbol, date, open_price, close_price, volume)
         VALUES %s
         ON CONFLICT (symbol, date)
         DO UPDATE SET
@@ -96,6 +98,6 @@ def main():
     all_data = [tuple(d.values()) for d in all_data]
     upsert_to_db(all_data)
 
+
 if __name__ == "__main__":
     main()
-
