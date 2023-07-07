@@ -1,28 +1,22 @@
-# get_raw_data.py
 import requests
 import datetime
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 
+from load_env import DATABASE, API_KEY
 
-# Set up DB details.
-DB_HOST = "db"  # Docker Compose will create a hostname with the service name
-DB_NAME = "financial_data.db"
-DB_USER = "username"
-DB_PASSWORD = "password"
 
-# Set up the API details
-alphavantage_api_key = 'L9I7ZWAUBBYEJX37'
-base_url = "https://www.alphavantage.co/query?"
-DB_FILE = 'financial_data.db'  # make sure this path is reachable in the Docker container
+today = datetime.date.today()
+# today = datetime.date(2023, 2, 14)
 
 
 def get_stock_data(symbol):
+    base_url = "https://www.alphavantage.co/query?"
     # Create the query string
     function = 'TIME_SERIES_DAILY_ADJUSTED'
     datatype = 'json'
-    query_string = f'{base_url}function={function}&symbol={symbol}&apikey={alphavantage_api_key}&datatype={datatype}'
+    query_string = f'{base_url}function={function}&symbol={symbol}&apikey={API_KEY}&datatype={datatype}'
 
     # Make the request
     response = requests.get(query_string)
@@ -41,7 +35,6 @@ def get_stock_data(symbol):
 
 def get_recent_two_weeks_data(stock_data, symbol):
     # Get today's date
-    today = datetime.date.today()
 
     # Calculate the date two weeks ago
     two_weeks_ago = today - datetime.timedelta(weeks=2)
@@ -59,7 +52,9 @@ def get_recent_two_weeks_data(stock_data, symbol):
 
 def upsert_to_db(data):
     # Connect to your postgres DB
-    conn = psycopg2.connect(dbname=DBNAME, user=USER, password=PASSWORD, host=HOST)
+    conn = psycopg2.connect(
+            dbname=DATABASE['name'], user=DATABASE['user'],
+            password=DATABASE['password'], host=DATABASE['host'])
     cur = conn.cursor()
 
     # Prepare the SQL statement. For dedup, use the combination of date and symbol
@@ -75,6 +70,7 @@ def upsert_to_db(data):
         close_price = EXCLUDED.close_price,
         volume = EXCLUDED.volume;
     """
+    print(f'Executing sql query: {sql}')
     execute_values(cur, sql, data)
 
     # Commit the changes and close the connection
@@ -97,6 +93,7 @@ def main():
         all_data.extend(two_weeks_data)
 
     # Insert the data to the SQLite database
+    all_data = [tuple(d.values()) for d in all_data]
     upsert_to_db(all_data)
 
 if __name__ == "__main__":

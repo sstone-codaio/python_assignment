@@ -4,17 +4,21 @@ services:
 
   db:
     image: postgres:13.2-alpine
+    env_file:
+      - .env
     volumes:
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     environment:
-      - POSTGRES_DB=financial_data
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
 
   api:
     build: .
+    env_file:
+      - .env
     ports:
-      - 5000:80
+      - 5000:5000
     depends_on:
       - db
     environment:

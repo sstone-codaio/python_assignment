@@ -1,19 +1,17 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from typing import List, Optional
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from math import ceil
 
-DATABASE = {
-    'name': 'financial_data',
-    'user': 'postgres',
-    'password': 'securepassword',
-    'host': 'db'
-}
+import util
+from load_env import DATABASE
 
 app = FastAPI()
+database_name = DATABASE['name']
+date_format = 'YYYY-MM-DD'
 
+# Model defnitions
 class FinancialData(BaseModel):
     symbol: str
     date: str
@@ -27,10 +25,13 @@ class Pagination(BaseModel):
     limit: int
     pages: int
 
+class Info(BaseModel):
+    error: str
+
 class FinancialDataResponse(BaseModel):
-    data: List[FinancialData]
-    pagination: Pagination
-    info: Optional[str] = None
+    data: Optional[List[FinancialData]] = []
+    pagination: Pagination = None
+    info: Info = None
 
 class StatisticsData(BaseModel):
     start_date: str
@@ -41,57 +42,155 @@ class StatisticsData(BaseModel):
     average_daily_volume: int
 
 class StatisticsResponse(BaseModel):
-    data: StatisticsData
-    info: Optional[str] = None
+    data: Optional[StatisticsData] = None
+    info: Info = None
+
+
+# API definitions
+
+@app.exception_handler(404)
+async def not_found(request, exc):
+    return {"message": "This route is not supported. Only the '/financial_data' and '/statistics' routes are supported."}
+
 
 @app.get("/api/financial_data", response_model=FinancialDataResponse)
-async def read_financial_data(start_date: Optional[str] = None, 
-                               end_date: Optional[str] = None, 
-                               symbol: Optional[str] = None, 
-                               limit: int = 5, page: int = 1):
-    with psycopg2.connect(database=DATABASE['name'], user=DATABASE['user'], password=DATABASE['password'], host=DATABASE['host']) as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            query = "SELECT * FROM financial_data"
-            conditions = []
+async def read_financial_data(
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        symbol: Optional[str] = None, limit: int = 5, page: int = 1):
+    # Connect to the database
+    with psycopg2.connect(
+            database=DATABASE['name'], user=DATABASE['user'],
+            password=DATABASE['password'], host=DATABASE['host'],
+            cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            # Some basic validation
+            if start_date and not util.is_date(start_date):
+                return {
+                    "data": [],
+                    "pagination": None,
+                    "info": {"error": "Input start date is invalid"}
+                }
 
-            if start_date is not None:
-                conditions.append(f"date >= '{start_date}'")
+            if end_date and not util.is_date(end_date):
+                return {
+                    "data": [],
+                    "pagination": None,
+                    "info": {"error": "Input end date is invalid"}
+                }
 
-            if end_date is not None:
-                conditions.append(f"date <= '{end_date}'")
+            if start_date and end_date and not util.is_date_after(start_date, end_date):
+                return {
+                    "data": [],
+                    "pagination": None,
+                    "info": {"error": "Input end date is before start date"}
+                }
 
-            if symbol is not None:
-                conditions.append(f"symbol = '{symbol}'")
+            # Query to get the total count of records
+            count_query = f"SELECT COUNT(*) FROM {database_name}"
+            if symbol:
+                count_query += f" WHERE symbol = '{symbol}'"
+            else:
+                count_query += f" WHERE symbol LIKE '%'"
 
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
+            # Handle date clause for count query
+            if start_date:
+                count_query += f" AND date >= '{start_date}'"
+            if end_date:
+                count_query += f" AND date <= '{end_date}'"
+
+            cur.execute(count_query)
+            count = cur.fetchone()['count']
+
+            # Main query to get the records with pagination
+            query = f"SELECT symbol, to_char(date, 'YYYY-MM-DD') as date, open_price, close_price, volume FROM {database_name}"
+            if symbol:
+                query += f" WHERE symbol = '{symbol}'"
+            else:
+                query += f" WHERE symbol LIKE '%'"
+            # Handle date query clause for record query
+            if start_date:
+                query += f" AND date >= '{start_date}'"
+            if end_date:
+                query += f" AND date <= '{end_date}'"
+            # Handle pagination
+            query += f" ORDER BY date DESC LIMIT {limit} OFFSET {(page - 1) * limit}"
 
             cur.execute(query)
-            total_count = cur.rowcount
-            pages = ceil(total_count / limit)
+            result = cur.fetchall()
+            return {
+                "data": result,
+                "pagination": {
+                    "count": count,
+                    "page": page,
+                    "limit": limit,
+                    "pages": (count // limit) + (1 if count % limit > 0 else 0)
+                },
+                "info": {"error": ""}
+            }
 
-            query += f" OFFSET {(page - 1) * limit} LIMIT {limit}"
-            cur.execute(query)
-            rows = cur.fetchall()
-
-            data = [dict(row) for row in rows]
-
-    return {"data": data, "pagination": {"count": total_count, "page": page, "limit": limit, "pages": pages}, "info": ""}
 
 @app.get("/api/statistics", response_model=StatisticsResponse)
-async def read_statistics(start_date: str, end_date: str, symbol: str):
-    with psycopg2.connect(database=DATABASE['name'], user=DATABASE['user'], password=DATABASE['password'], host=DATABASE['host']) as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            query = f"SELECT AVG(open_price) as average_daily_open_price, AVG(close_price) as average_daily_close_price, AVG(volume) as average_daily_volume FROM financial_data WHERE date >= '{start_date}' AND date <= '{end_date}' AND symbol = '{symbol}'"
+async def read_statistics(
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        symbol: Optional[str] = None):
+    # Connect to the database
+    with psycopg2.connect(
+            database=DATABASE['name'], user=DATABASE['user'],
+            password=DATABASE['password'], host=DATABASE['host'],
+            cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            # Some basic validation. For this api, all inputs are required.
+            if not util.is_date(start_date):
+                return {
+                    "data": None,
+                    "info": {"error": "Input start date is invalid"}
+                }
+
+            if not util.is_date(end_date):
+                return {
+                    "data": None,
+                    "info": {"error": "Input end date is invalid"}
+                }
+
+            if not util.is_date_after(start_date, end_date):
+                return {
+                    "data": None,
+                    "info": {"error": "Input end date is before start date"}
+                }
+
+            if not symbol:
+                return {
+                    "data": None,
+                    "info": {"error": "Symbol is not specified"}
+                }
+
+            query = f"""
+                SELECT 
+                    symbol, 
+                    AVG(open_price::decimal) as average_daily_open_price,
+                    AVG(close_price::decimal) as average_daily_close_price,
+                    AVG(volume::decimal) as average_daily_volume
+                FROM {database_name} 
+                WHERE date BETWEEN '{start_date}' AND '{end_date}' AND symbol='{symbol}'
+                GROUP BY symbol;
+            """
             cur.execute(query)
-            row = cur.fetchone()
+            # Fetch the results
+            result = cur.fetchone()
+            if result is None:
+                return {"data": None, "info": {"error": "No data found for given parameters."}}
 
-            if row is None:
-                raise HTTPException(status_code=404, detail="Symbol not found")
-
-            data = {
-                'start_date': start_date,
-                'end_date': end_date,
-                'symbol': symbol,
-                'average_daily_open_price': row['average_daily_open_price'],
+            return {
+                "data": {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "symbol": result['symbol'],
+                    "average_daily_open_price": float(result['average_daily_open_price']),
+                    "average_daily_close_price": float(result['average_daily_close_price']),
+                    "average_daily_volume": float(result['average_daily_volume'])
+                },
+                "info": {"error": ""}
+            }
 
